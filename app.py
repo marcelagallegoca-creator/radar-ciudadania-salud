@@ -810,19 +810,48 @@ df_precios = df_precios.sort_values("ratio_precio", ascending=False)
 col_dist, col_detalle = st.columns([2, 3])
 
 with col_dist:
+    # Crear histograma con colores correctos por zona
+    # Separar datos en 3 grupos y graficar cada uno como trace independiente
+    df_verde = df_precios[df_precios["ratio_precio"] <= 1.2]
+    df_amarillo = df_precios[(df_precios["ratio_precio"] > 1.2) & (df_precios["ratio_precio"] <= 1.5)]
+    df_rojo = df_precios[df_precios["ratio_precio"] > 1.5]
+    
+    # Definir bins uniformes para las 3 series
+    ratio_min = max(0.3, df_precios["ratio_precio"].min() - 0.1)
+    ratio_max = df_precios["ratio_precio"].max() + 0.1
+    bin_size = 0.1
+    bins_config = dict(start=ratio_min, end=ratio_max, size=bin_size)
+    
     fig_hist = go.Figure()
-    fig_hist.add_trace(go.Histogram(
-        x=df_precios["ratio_precio"],
-        nbinsx=30,
-        marker=dict(
-            color=np.where(df_precios["ratio_precio"] > 1.5, "#F44336", 
-                          np.where(df_precios["ratio_precio"] > 1.2, "#FFC107", "#4CAF50")),
-        ),
-        opacity=0.8,
-    ))
-    fig_hist.add_vline(x=1.0, line_dash="solid", line_color="green",
+    
+    if len(df_verde) > 0:
+        fig_hist.add_trace(go.Histogram(
+            x=df_verde["ratio_precio"],
+            xbins=bins_config,
+            marker_color="#4CAF50",
+            opacity=0.85,
+            name="Normal (≤1.2x)",
+        ))
+    if len(df_amarillo) > 0:
+        fig_hist.add_trace(go.Histogram(
+            x=df_amarillo["ratio_precio"],
+            xbins=bins_config,
+            marker_color="#FFC107",
+            opacity=0.85,
+            name="Atención (1.2x–1.5x)",
+        ))
+    if len(df_rojo) > 0:
+        fig_hist.add_trace(go.Histogram(
+            x=df_rojo["ratio_precio"],
+            xbins=bins_config,
+            marker_color="#F44336",
+            opacity=0.85,
+            name="Sobreprecio (>1.5x)",
+        ))
+    
+    fig_hist.add_vline(x=1.0, line_dash="solid", line_color="green", line_width=2,
                        annotation_text="Precio de referencia", annotation_position="top")
-    fig_hist.add_vline(x=1.5, line_dash="dash", line_color="red",
+    fig_hist.add_vline(x=1.5, line_dash="dash", line_color="red", line_width=2,
                        annotation_text="50% sobre referencia", annotation_position="top")
     fig_hist.update_layout(
         title="Distribución: valor pagado vs. referencia",
@@ -831,6 +860,9 @@ with col_dist:
         height=380,
         plot_bgcolor="white",
         margin=dict(l=10, r=10, t=50, b=10),
+        barmode="stack",
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5, font=dict(size=10)),
     )
     st.plotly_chart(fig_hist, use_container_width=True)
 
