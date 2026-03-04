@@ -384,105 +384,19 @@ else:
         st.metric("Índ. Transparencia", f"{dep_info['itm']}/100",
                    help="Mide riesgo de corrupción administrativa (Transparencia por Colombia). Menor valor = mayor riesgo.")
     
-    # --- Cambio 5: Evolución indicadores de salud vs. gasto ---
-    dep_temporal = df_salud_temporal[df_salud_temporal["departamento"] == departamento_sel]
-    
-    if len(dep_temporal) > 0:
-        st.markdown("**📊 Evolución: inversión en salud vs. indicadores del territorio (2023–2025)**")
-        st.caption(
-            "¿Se traduce el gasto en contratación de salud en mejores indicadores? "
-            "Esta comparación no implica causalidad directa — factores externos como "
-            "migración, emergencias sanitarias o tiempos de maduración de proyectos "
-            "también influyen en los resultados."
-        )
-        
-        indicador_temporal = st.selectbox(
-            "Indicador de salud a comparar:",
-            options=["cobertura_vacunacion", "mortalidad_infantil_x1000",
-                     "camas_x10000_hab", "medicos_x10000_hab"],
-            format_func=lambda x: {
-                "cobertura_vacunacion": "Cobertura de vacunación (%)",
-                "mortalidad_infantil_x1000": "Mortalidad infantil (‰)",
-                "camas_x10000_hab": "Camas hospitalarias / 10.000 hab",
-                "medicos_x10000_hab": "Médicos / 10.000 hab",
-            }[x],
-            key="indicador_temporal_m1",
-        )
-        
-        # Gráfico de doble eje
-        fig_evol = go.Figure()
-        
-        # Barras: gasto en salud
-        fig_evol.add_trace(go.Bar(
-            x=dep_temporal["anio"],
-            y=dep_temporal["gasto_salud"],
-            name="Gasto en contratación",
-            marker_color="#B0BEC5",
-            opacity=0.7,
-            yaxis="y",
-        ))
-        
-        # Línea: indicador de salud
-        nombre_indicador = {
-            "cobertura_vacunacion": "Cobertura vacunación (%)",
-            "mortalidad_infantil_x1000": "Mortalidad infantil (‰)",
-            "camas_x10000_hab": "Camas / 10.000 hab",
-            "medicos_x10000_hab": "Médicos / 10.000 hab",
-        }[indicador_temporal]
-        
-        fig_evol.add_trace(go.Scatter(
-            x=dep_temporal["anio"],
-            y=dep_temporal[indicador_temporal],
-            name=nombre_indicador,
-            mode="lines+markers",
-            line=dict(color="#2E75B6", width=3),
-            marker=dict(size=10),
-            yaxis="y2",
-        ))
-        
-        fig_evol.update_layout(
-            yaxis=dict(title="Gasto en contratación (COP)", side="left", showgrid=False),
-            yaxis2=dict(title=nombre_indicador, side="right", overlaying="y", showgrid=True),
-            xaxis=dict(title="", tickvals=[2023, 2024, 2025], dtick=1),
-            height=350,
-            margin=dict(l=10, r=10, t=30, b=10),
-            plot_bgcolor="white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            barmode="group",
-        )
-        st.plotly_chart(fig_evol, use_container_width=True)
-        
-        # Narrativa automática
-        if len(dep_temporal) >= 3:
-            gasto_23 = dep_temporal[dep_temporal["anio"] == 2023]["gasto_salud"].values[0]
-            gasto_25 = dep_temporal[dep_temporal["anio"] == 2025]["gasto_salud"].values[0]
-            ind_23 = dep_temporal[dep_temporal["anio"] == 2023][indicador_temporal].values[0]
-            ind_25 = dep_temporal[dep_temporal["anio"] == 2025][indicador_temporal].values[0]
-            
-            if gasto_23 > 0:
-                cambio_gasto = (gasto_25 - gasto_23) / gasto_23 * 100
-                cambio_ind = ind_25 - ind_23
-                
-                # Interpretar según indicador (mortalidad: menor = mejor)
-                mejor_si_sube = indicador_temporal != "mortalidad_infantil_x1000"
-                indicador_mejoro = (cambio_ind > 0) if mejor_si_sube else (cambio_ind < 0)
-                
-                if cambio_gasto > 10 and not indicador_mejoro:
-                    st.warning(
-                        f"⚠️ Entre 2023 y 2025, el gasto en contratación de salud "
-                        f"{'aumentó' if cambio_gasto > 0 else 'disminuyó'} un **{abs(cambio_gasto):.0f}%**, "
-                        f"pero el indicador {nombre_indicador.lower()} "
-                        f"{'empeoró' if not indicador_mejoro else 'mejoró'} "
-                        f"({ind_23} → {ind_25}). Esto no confirma irregularidades — "
-                        f"puede deberse a inversiones de largo plazo, factores externos o "
-                        f"presiones demográficas."
-                    )
-                elif cambio_gasto > 10 and indicador_mejoro:
-                    st.success(
-                        f"✅ Entre 2023 y 2025, el gasto en contratación de salud "
-                        f"aumentó un **{abs(cambio_gasto):.0f}%** y el indicador "
-                        f"{nombre_indicador.lower()} mejoró ({ind_23} → {ind_25})."
-                    )
+    # Indicadores de salud (informativos, el análisis temporal está en Módulo 4)
+    dep_salud = df_salud[df_salud["departamento"] == departamento_sel].iloc[0] if len(df_salud[df_salud["departamento"] == departamento_sel]) > 0 else None
+    if dep_salud is not None:
+        st.markdown("**Indicadores de salud del territorio** *(análisis detallado en el módulo Dinero vs. Resultados)*")
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        with sc1:
+            st.metric("Cobertura vacunación", f"{dep_salud['cobertura_vacunacion']}%")
+        with sc2:
+            st.metric("Mortalidad infantil", f"{dep_salud['mortalidad_infantil_x1000']}‰")
+        with sc3:
+            st.metric("Camas / 10.000 hab", f"{dep_salud['camas_x10000_hab']}")
+        with sc4:
+            st.metric("Médicos / 10.000 hab", f"{dep_salud['medicos_x10000_hab']}")
     
     # Ranking nacional
     dep_rank = df.groupby("departamento").apply(
@@ -664,9 +578,12 @@ st.markdown("---")
 st.markdown("""
 <div class="modulo-header">
     <h2>💊 Dinero vs. Resultados</h2>
-    <p>¿Se traduce la inversión en salud en mejores indicadores? Los departamentos que gastan mucho pero tienen malos resultados merecen atención.</p>
+    <p>¿Se traduce la inversión en salud en mejores indicadores? Comparación de todos los departamentos.</p>
 </div>
 """, unsafe_allow_html=True)
+
+st.caption("📍 Esta gráfica siempre muestra **todos los departamentos** para permitir la comparación nacional. "
+           "Si seleccionaste un departamento en los filtros, aparecerá resaltado.")
 
 # Calcular gasto per cápita por departamento
 gasto_dep = df.groupby("departamento")["valor"].sum().reset_index()
@@ -698,59 +615,176 @@ indicador_eje_y = st.selectbox(
 # Invertir eje Y para mortalidad (menor = mejor)
 invertir = indicador_eje_y == "mortalidad_infantil_x1000"
 
-fig_scatter = px.scatter(
-    df_gasto_salud,
-    x="gasto_per_capita",
-    y=indicador_eje_y,
-    size="gasto_total",
-    color="idf",
-    color_continuous_scale=["#F44336", "#FFC107", "#4CAF50"],
-    hover_name="departamento",
-    hover_data={
-        "gasto_per_capita": ":.0f",
-        indicador_eje_y: ":.1f",
-        "gasto_total": ":.2s",
-        "idf": ":.1f",
-    },
-    labels={
-        "gasto_per_capita": "Gasto en salud per cápita (COP)",
-        indicador_eje_y: {
-            "cobertura_vacunacion": "Cobertura vacunación (%)",
-            "mortalidad_infantil_x1000": "Mortalidad infantil (‰)",
-            "camas_x10000_hab": "Camas / 10.000 hab",
-            "medicos_x10000_hab": "Médicos / 10.000 hab",
-        }[indicador_eje_y],
-        "idf": "Índ. Desempeño Fiscal",
-        "gasto_total": "Gasto total",
-    },
-)
+nombre_indicador_m4 = {
+    "cobertura_vacunacion": "Cobertura vacunación (%)",
+    "mortalidad_infantil_x1000": "Mortalidad infantil (‰)",
+    "camas_x10000_hab": "Camas / 10.000 hab",
+    "medicos_x10000_hab": "Médicos / 10.000 hab",
+}[indicador_eje_y]
 
-# Añadir cuadrantes
+# Marcar departamento seleccionado
+df_gasto_salud["es_seleccionado"] = (
+    df_gasto_salud["departamento"] == departamento_sel
+) if departamento_sel != "Todos" else False
+
+# Construir scatter con Plotly GO para tener control de resaltado
+fig_scatter = go.Figure()
+
+# Burbujas de fondo (todos los departamentos)
+df_fondo = df_gasto_salud[~df_gasto_salud["es_seleccionado"]]
+df_resaltado = df_gasto_salud[df_gasto_salud["es_seleccionado"]]
+
+# Escalar tamaños
+size_max_val = df_gasto_salud["gasto_total"].max()
+size_scale = df_gasto_salud["gasto_total"] / size_max_val * 40 + 8
+
+fig_scatter.add_trace(go.Scatter(
+    x=df_fondo["gasto_per_capita"],
+    y=df_fondo[indicador_eje_y],
+    mode="markers",
+    marker=dict(
+        size=(df_fondo["gasto_total"] / size_max_val * 40 + 8),
+        color=df_fondo["idf"],
+        colorscale=[[0, "#F44336"], [0.5, "#FFC107"], [1, "#4CAF50"]],
+        cmin=35, cmax=85,
+        colorbar=dict(title="IDF"),
+        opacity=0.5 if departamento_sel != "Todos" else 0.8,
+        line=dict(width=1, color="white"),
+    ),
+    text=df_fondo["departamento"],
+    hovertemplate="<b>%{text}</b><br>Gasto per cápita: $%{x:,.0f}<br>" + nombre_indicador_m4 + ": %{y:.1f}<extra></extra>",
+    name="Otros departamentos",
+))
+
+# Burbuja resaltada
+if len(df_resaltado) > 0:
+    fig_scatter.add_trace(go.Scatter(
+        x=df_resaltado["gasto_per_capita"],
+        y=df_resaltado[indicador_eje_y],
+        mode="markers+text",
+        marker=dict(
+            size=(df_resaltado["gasto_total"] / size_max_val * 40 + 12),
+            color=df_resaltado["idf"],
+            colorscale=[[0, "#F44336"], [0.5, "#FFC107"], [1, "#4CAF50"]],
+            cmin=35, cmax=85,
+            opacity=1.0,
+            line=dict(width=3, color="#1B3A5C"),
+        ),
+        text=df_resaltado["departamento"],
+        textposition="top center",
+        textfont=dict(size=13, color="#1B3A5C"),
+        hovertemplate="<b>%{text}</b><br>Gasto per cápita: $%{x:,.0f}<br>" + nombre_indicador_m4 + ": %{y:.1f}<extra></extra>",
+        name=departamento_sel,
+    ))
+
+# Cuadrantes
 median_x = df_gasto_salud["gasto_per_capita"].median()
 median_y = df_gasto_salud[indicador_eje_y].median()
 
 fig_scatter.add_hline(y=median_y, line_dash="dash", line_color="gray", opacity=0.5)
 fig_scatter.add_vline(x=median_x, line_dash="dash", line_color="gray", opacity=0.5)
 
-# Anotaciones de cuadrantes
 if invertir:
-    fig_scatter.add_annotation(x=median_x * 1.8, y=median_y * 0.5, text="⚠️ Alto gasto +<br>Baja mortalidad", showarrow=False, font=dict(size=10, color="green"))
+    fig_scatter.add_annotation(x=median_x * 1.8, y=median_y * 0.5, text="✅ Alto gasto +<br>Baja mortalidad", showarrow=False, font=dict(size=10, color="green"))
     fig_scatter.add_annotation(x=median_x * 1.8, y=median_y * 1.5, text="🔴 Alto gasto +<br>Alta mortalidad", showarrow=False, font=dict(size=10, color="red"))
 else:
     fig_scatter.add_annotation(x=median_x * 1.8, y=median_y * 1.3, text="✅ Alto gasto +<br>Buenos resultados", showarrow=False, font=dict(size=10, color="green"))
     fig_scatter.add_annotation(x=median_x * 1.8, y=median_y * 0.7, text="🔴 Alto gasto +<br>Malos resultados", showarrow=False, font=dict(size=10, color="red"))
 
 fig_scatter.update_layout(
+    xaxis_title="Gasto en salud per cápita (COP)",
+    yaxis_title=nombre_indicador_m4,
     height=500,
     plot_bgcolor="white",
     margin=dict(l=10, r=10, t=30, b=10),
+    showlegend=False,
 )
 st.plotly_chart(fig_scatter, use_container_width=True)
 
 st.caption(
-    "Cada burbuja es un departamento. El tamaño representa el gasto total y el color el Índice de Desempeño Fiscal (verde = alto, rojo = bajo). "
-    "Los departamentos en el cuadrante de alto gasto con malos resultados merecen una mirada más detenida."
+    "Cada burbuja es un departamento. El tamaño representa el gasto total y el color el "
+    "Índice de Desempeño Fiscal (verde = buena gestión, rojo = débil). Las líneas punteadas "
+    "marcan la mediana nacional. Los departamentos en el cuadrante de **alto gasto con malos "
+    "resultados** merecen una mirada más detenida."
 )
+
+# --- Evolución temporal (antes en Módulo 1) ---
+if departamento_sel != "Todos":
+    dep_temporal = df_salud_temporal[df_salud_temporal["departamento"] == departamento_sel]
+    
+    if len(dep_temporal) > 0:
+        st.markdown(f"**📊 Evolución en {departamento_sel}: inversión vs. {nombre_indicador_m4.lower()} (2023–2025)**")
+        st.caption(
+            "¿Se traduce el gasto en contratación de salud en mejores indicadores? "
+            "Esta comparación no implica causalidad directa — factores externos como "
+            "migración, emergencias sanitarias o tiempos de maduración de proyectos "
+            "también influyen en los resultados."
+        )
+        
+        fig_evol = go.Figure()
+        
+        fig_evol.add_trace(go.Bar(
+            x=dep_temporal["anio"],
+            y=dep_temporal["gasto_salud"],
+            name="Gasto en contratación",
+            marker_color="#B0BEC5",
+            opacity=0.7,
+            yaxis="y",
+        ))
+        
+        fig_evol.add_trace(go.Scatter(
+            x=dep_temporal["anio"],
+            y=dep_temporal[indicador_eje_y],
+            name=nombre_indicador_m4,
+            mode="lines+markers",
+            line=dict(color="#2E75B6", width=3),
+            marker=dict(size=10),
+            yaxis="y2",
+        ))
+        
+        fig_evol.update_layout(
+            yaxis=dict(title="Gasto en contratación (COP)", side="left", showgrid=False),
+            yaxis2=dict(title=nombre_indicador_m4, side="right", overlaying="y", showgrid=True),
+            xaxis=dict(title="", tickvals=[2023, 2024, 2025], dtick=1),
+            height=350,
+            margin=dict(l=10, r=10, t=30, b=10),
+            plot_bgcolor="white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        )
+        st.plotly_chart(fig_evol, use_container_width=True)
+        
+        # Narrativa automática
+        if len(dep_temporal) >= 3:
+            gasto_23 = dep_temporal[dep_temporal["anio"] == 2023]["gasto_salud"].values[0]
+            gasto_25 = dep_temporal[dep_temporal["anio"] == 2025]["gasto_salud"].values[0]
+            ind_23 = dep_temporal[dep_temporal["anio"] == 2023][indicador_eje_y].values[0]
+            ind_25 = dep_temporal[dep_temporal["anio"] == 2025][indicador_eje_y].values[0]
+            
+            if gasto_23 > 0:
+                cambio_gasto = (gasto_25 - gasto_23) / gasto_23 * 100
+                cambio_ind = ind_25 - ind_23
+                
+                mejor_si_sube = indicador_eje_y != "mortalidad_infantil_x1000"
+                indicador_mejoro = (cambio_ind > 0) if mejor_si_sube else (cambio_ind < 0)
+                
+                if cambio_gasto > 10 and not indicador_mejoro:
+                    st.warning(
+                        f"⚠️ Entre 2023 y 2025, el gasto en contratación de salud "
+                        f"{'aumentó' if cambio_gasto > 0 else 'disminuyó'} un **{abs(cambio_gasto):.0f}%**, "
+                        f"pero el indicador {nombre_indicador_m4.lower()} "
+                        f"{'empeoró' if not indicador_mejoro else 'mejoró'} "
+                        f"({ind_23} → {ind_25}). Esto no confirma irregularidades — "
+                        f"puede deberse a inversiones de largo plazo, factores externos o "
+                        f"presiones demográficas."
+                    )
+                elif cambio_gasto > 10 and indicador_mejoro:
+                    st.success(
+                        f"✅ Entre 2023 y 2025, el gasto en contratación de salud "
+                        f"aumentó un **{abs(cambio_gasto):.0f}%** y el indicador "
+                        f"{nombre_indicador_m4.lower()} mejoró ({ind_23} → {ind_25})."
+                    )
+else:
+    st.info("👆 Selecciona un departamento en los filtros para ver la evolución temporal de gasto vs. indicadores.")
 
 
 st.markdown("---")
