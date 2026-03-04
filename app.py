@@ -267,17 +267,34 @@ with st.sidebar:
         "para prototipo académico"
     )
 
-# Aplicar filtros
+# Aplicar filtros (vacío = seleccionar todos)
 df_filtrado = df.copy()
 if departamento_sel != "Todos":
     df_filtrado = df_filtrado[df_filtrado["departamento"] == departamento_sel]
-df_filtrado = df_filtrado[df_filtrado["nivel_riesgo"].isin(nivel_riesgo_sel)]
-df_filtrado = df_filtrado[df_filtrado["modalidad"].isin(modalidad_sel)]
+
+# Si el usuario deselecciona todo, se interpreta como "ver todos"
+niveles_activos = nivel_riesgo_sel if nivel_riesgo_sel else ["Alto", "Medio", "Bajo"]
+modalidades_activas = modalidad_sel if modalidad_sel else sorted(df["modalidad"].unique().tolist())
+
+df_filtrado = df_filtrado[df_filtrado["nivel_riesgo"].isin(niveles_activos)]
+df_filtrado = df_filtrado[df_filtrado["modalidad"].isin(modalidades_activas)]
 if len(rango_fechas) == 2:
     df_filtrado = df_filtrado[
         (df_filtrado["fecha_publicacion"].dt.date >= rango_fechas[0])
         & (df_filtrado["fecha_publicacion"].dt.date <= rango_fechas[1])
     ]
+
+# Mensaje si los filtros no devuelven datos
+if len(df_filtrado) == 0:
+    st.warning(
+        "⚠️ No se encontraron contratos con los filtros seleccionados. "
+        "Prueba ampliando el rango de fechas o seleccionando otros criterios."
+    )
+    st.stop()
+
+# Aviso si se restauraron filtros vacíos
+if not nivel_riesgo_sel or not modalidad_sel:
+    st.info("ℹ️ Se muestran todos los niveles de riesgo y/o modalidades porque no seleccionaste ningún filtro específico.")
 
 
 # ============================================================
