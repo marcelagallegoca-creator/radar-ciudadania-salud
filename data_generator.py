@@ -169,6 +169,16 @@ def generar_contratos(n=800):
         precio_ref = valor * np.random.uniform(0.5, 1.1)
         ratio_precio = valor / precio_ref if precio_ref > 0 else 1.0
         
+        # Estado del contrato (pre-adjudicación vs adjudicado)
+        # Contratos más recientes tienen mayor probabilidad de estar en proceso
+        dias_desde_pub = (datetime(2025, 5, 1) - inicio).days
+        if dias_desde_pub < 90:
+            estado = np.random.choice(["En proceso", "Adjudicado"], p=[0.75, 0.25])
+        elif dias_desde_pub < 270:
+            estado = np.random.choice(["En proceso", "Adjudicado"], p=[0.30, 0.70])
+        else:
+            estado = np.random.choice(["En proceso", "Adjudicado"], p=[0.05, 0.95])
+        
         registros.append({
             "id_contrato": f"SECOP-{anio}-{str(i+1).zfill(5)}",
             "departamento": dep,
@@ -193,6 +203,7 @@ def generar_contratos(n=800):
             "poblacion_departamento": info_dep["poblacion"],
             "periodo_preelectoral": preelectoral,
             "fin_anio_fiscal": mes >= 11,
+            "estado": estado,
         })
     
     # Inyectar casos de fragmentación intencional (misma entidad + proveedor + mes)
@@ -236,6 +247,7 @@ def generar_contratos(n=800):
                 "poblacion_departamento": info_dep["poblacion"],
                 "periodo_preelectoral": False,
                 "fin_anio_fiscal": fecha.month >= 11,
+                "estado": np.random.choice(["En proceso", "Adjudicado"], p=[0.4, 0.6]),
             })
     
     return pd.DataFrame(registros)
@@ -264,7 +276,65 @@ def generar_datos_departamento():
     df_salud.index.name = "departamento"
     df_salud = df_salud.reset_index()
     
-    return df, df_salud
+    # Series temporales de indicadores de salud (2023, 2024, 2025)
+    df_salud_temporal = generar_series_temporales_salud(df, indicadores_salud)
+    
+    return df, df_salud, df_salud_temporal
+
+
+def generar_series_temporales_salud(df_contratos, indicadores_salud_base):
+    """
+    Genera series temporales anuales (2023-2025) de indicadores de salud por departamento.
+    Simula evolución correlacionada con el gasto: departamentos que gastan más
+    pueden mejorar o no sus indicadores (para crear narrativas realistas).
+    """
+    registros = []
+    
+    for dep, info in DEPARTAMENTOS.items():
+        base = indicadores_salud_base[dep]
+        
+        # Calcular gasto anual del departamento
+        dep_contratos = df_contratos[df_contratos["departamento"] == dep]
+        gasto_por_anio = {}
+        for anio in [2023, 2024, 2025]:
+            gasto_anio = dep_contratos[
+                dep_contratos["fecha_publicacion"].dt.year == anio
+            ]["valor"].sum()
+            gasto_por_anio[anio] = gasto_anio
+        
+        # Simular evolución: departamentos con IDF alto mejoran sus indicadores,
+        # departamentos con IDF bajo pueden estancarse o empeorar pese al gasto
+        for i, anio in enumerate([2023, 2024, 2025]):
+            if info["idf"] >= 65:
+                # Departamentos eficientes: mejora gradual
+                delta_cobertura = i * np.random.uniform(0.3, 1.5)
+                delta_mortalidad = -i * np.random.uniform(0.2, 0.8)
+                delta_camas = i * np.random.uniform(0.05, 0.3)
+                delta_medicos = i * np.random.uniform(0.1, 0.4)
+            elif info["idf"] >= 50:
+                # Departamentos intermedios: mejora lenta o estancamiento
+                delta_cobertura = i * np.random.uniform(-0.3, 0.8)
+                delta_mortalidad = i * np.random.uniform(-0.5, 0.3)
+                delta_camas = i * np.random.uniform(-0.1, 0.2)
+                delta_medicos = i * np.random.uniform(-0.1, 0.2)
+            else:
+                # Departamentos vulnerables: gastan pero no mejoran
+                delta_cobertura = i * np.random.uniform(-1.0, 0.3)
+                delta_mortalidad = i * np.random.uniform(-0.2, 1.0)
+                delta_camas = i * np.random.uniform(-0.2, 0.1)
+                delta_medicos = i * np.random.uniform(-0.3, 0.1)
+            
+            registros.append({
+                "departamento": dep,
+                "anio": anio,
+                "gasto_salud": gasto_por_anio.get(anio, 0),
+                "cobertura_vacunacion": round(max(40, min(99, base["cobertura_vacunacion"] + delta_cobertura)), 1),
+                "mortalidad_infantil_x1000": round(max(3, min(50, base["mortalidad_infantil_x1000"] + delta_mortalidad)), 1),
+                "camas_x10000_hab": round(max(2, base["camas_x10000_hab"] + delta_camas), 1),
+                "medicos_x10000_hab": round(max(1, base["medicos_x10000_hab"] + delta_medicos), 1),
+            })
+    
+    return pd.DataFrame(registros)
 
 
 def calcular_concentracion_proveedores(df):
@@ -318,9 +388,11 @@ def detectar_fragmentacion(df):
 # ============================================================
 
 if __name__ == "__main__":
-    df, df_salud = generar_datos_departamento()
+    df, df_salud, df_salud_temporal = generar_datos_departamento()
     print(f"Contratos generados: {len(df)}")
+    print(f"Estados: {df['estado'].value_counts().to_dict()}")
     print(f"Departamentos con datos de salud: {len(df_salud)}")
+    print(f"Series temporales: {len(df_salud_temporal)} registros ({df_salud_temporal['anio'].unique()})")
     print(f"Rango de scores: {df['score_riesgo'].min()} - {df['score_riesgo'].max()}")
     print(f"Distribución de riesgo:\n{df['nivel_riesgo'].value_counts()}")
     

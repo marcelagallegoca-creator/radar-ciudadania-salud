@@ -146,12 +146,12 @@ st.markdown("""
 
 @st.cache_data
 def cargar_datos():
-    df, df_salud = generar_datos_departamento()
+    df, df_salud, df_salud_temporal = generar_datos_departamento()
     df_concentracion = calcular_concentracion_proveedores(df)
     df_fragmentacion = detectar_fragmentacion(df)
-    return df, df_salud, df_concentracion, df_fragmentacion
+    return df, df_salud, df_salud_temporal, df_concentracion, df_fragmentacion
 
-df, df_salud, df_concentracion, df_fragmentacion = cargar_datos()
+df, df_salud, df_salud_temporal, df_concentracion, df_fragmentacion = cargar_datos()
 
 
 # ============================================================
@@ -250,6 +250,13 @@ with st.sidebar:
         default=sorted(df["modalidad"].unique().tolist()),
     )
     
+    estado_sel = st.selectbox(
+        "Estado del proceso",
+        options=["Todos", "En proceso", "Adjudicado"],
+        index=0,
+        help="En proceso = pre-adjudicación (alerta temprana). Adjudicado = proceso finalizado.",
+    )
+    
     rango_fechas = st.date_input(
         "Rango de fechas",
         value=(df["fecha_publicacion"].min(), df["fecha_publicacion"].max()),
@@ -278,6 +285,8 @@ modalidades_activas = modalidad_sel if modalidad_sel else sorted(df["modalidad"]
 
 df_filtrado = df_filtrado[df_filtrado["nivel_riesgo"].isin(niveles_activos)]
 df_filtrado = df_filtrado[df_filtrado["modalidad"].isin(modalidades_activas)]
+if estado_sel != "Todos":
+    df_filtrado = df_filtrado[df_filtrado["estado"] == estado_sel]
 if len(rango_fechas) == 2:
     df_filtrado = df_filtrado[
         (df_filtrado["fecha_publicacion"].dt.date >= rango_fechas[0])
@@ -308,20 +317,30 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Cálculos nacionales para comparación
+prom_nacional_pct_alto = (
+    len(df[df["nivel_riesgo"] == "Alto"]) / max(len(df), 1) * 100
+)
+
 if departamento_sel == "Todos":
     st.info("👆 Selecciona un departamento en los filtros para ver su scorecard personalizado.")
     
     # Vista nacional resumida
+    n_adjudicado = len(df_filtrado[df_filtrado["estado"] == "Adjudicado"])
+    n_en_proceso = len(df_filtrado[df_filtrado["estado"] == "En proceso"])
+    valor_adjudicado = df_filtrado[df_filtrado["estado"] == "Adjudicado"]["valor"].sum()
+    valor_en_proceso = df_filtrado[df_filtrado["estado"] == "En proceso"]["valor"].sum()
+    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Contratos analizados", f"{len(df_filtrado):,}")
     with col2:
         n_alertas = len(df_filtrado[df_filtrado["nivel_riesgo"] == "Alto"])
-        st.metric("Alertas altas", f"{n_alertas}", delta=f"{n_alertas/max(len(df_filtrado),1)*100:.0f}% del total", delta_color="inverse")
+        st.metric("Alertas altas", f"{n_alertas}")
     with col3:
-        st.metric("Valor total", formato_moneda(df_filtrado["valor"].sum()))
+        st.metric("Valor adjudicado", formato_moneda(valor_adjudicado))
     with col4:
-        st.metric("Departamentos", f"{df_filtrado['departamento'].nunique()}")
+        st.metric("Valor estimado en proceso", formato_moneda(valor_en_proceso))
 
 else:
     dep_info = DEPARTAMENTOS[departamento_sel]
@@ -332,32 +351,138 @@ else:
     nivel_fiab, texto_fiab = indicador_fiabilidad(dep_info["itm"])
     st.markdown(f'<div class="fiabilidad-{nivel_fiab}">{texto_fiab}</div>', unsafe_allow_html=True)
     
-    # KPIs
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # --- Cambio 1: Comparación vs promedio nacional ---
+    pct_alto_dep = len(dep_data[dep_data["nivel_riesgo"] == "Alto"]) / max(len(dep_data), 1) * 100
+    diff_vs_nacional = round(pct_alto_dep - prom_nacional_pct_alto, 1)
+    
+    # --- Cambio 2: Valores por estado ---
+    valor_adj = dep_data[dep_data["estado"] == "Adjudicado"]["valor"].sum()
+    valor_proc = dep_data[dep_data["estado"] == "En proceso"]["valor"].sum()
+    
+    # KPIs fila 1: Contratación
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Contratos", f"{len(dep_data):,}")
     with col2:
         n_alto = len(dep_data[dep_data["nivel_riesgo"] == "Alto"])
-        st.metric("Riesgo alto", f"{n_alto}", delta=f"{n_alto/max(len(dep_data),1)*100:.0f}%", delta_color="inverse")
+        if diff_vs_nacional > 0:
+            st.metric("Riesgo alto", f"{n_alto}", delta=f"+{diff_vs_nacional:.1f} pp vs. promedio nacional", delta_color="inverse")
+        else:
+            st.metric("Riesgo alto", f"{n_alto}", delta=f"{diff_vs_nacional:.1f} pp vs. promedio nacional", delta_color="inverse")
     with col3:
-        st.metric("Valor total", formato_moneda(dep_data["valor"].sum()))
+        st.metric("💰 Valor adjudicado", formato_moneda(valor_adj))
     with col4:
-        st.metric("Índ. Desempeño Fiscal", f"{dep_info['idf']}/100")
-    with col5:
-        st.metric("Índ. Transparencia", f"{dep_info['itm']}/100")
+        st.metric("⏳ Valor estimado en proceso", formato_moneda(valor_proc),
+                   help="Procesos en fase pre-adjudicación. Este es el espacio donde la alerta temprana permite actuar.")
     
-    # Indicadores de salud
-    if dep_salud is not None:
-        st.markdown("**Indicadores de salud del territorio:**")
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        with sc1:
-            st.metric("Cobertura vacunación", f"{dep_salud['cobertura_vacunacion']}%")
-        with sc2:
-            st.metric("Mortalidad infantil", f"{dep_salud['mortalidad_infantil_x1000']}‰")
-        with sc3:
-            st.metric("Camas / 10.000 hab", f"{dep_salud['camas_x10000_hab']}")
-        with sc4:
-            st.metric("Médicos / 10.000 hab", f"{dep_salud['medicos_x10000_hab']}")
+    # KPIs fila 2: Contexto territorial
+    col5, col6 = st.columns(2)
+    with col5:
+        st.metric("Índ. Desempeño Fiscal", f"{dep_info['idf']}/100",
+                   help="Mide la gestión financiera del departamento (DNP). Menor valor = mayor vulnerabilidad fiscal.")
+    with col6:
+        st.metric("Índ. Transparencia", f"{dep_info['itm']}/100",
+                   help="Mide riesgo de corrupción administrativa (Transparencia por Colombia). Menor valor = mayor riesgo.")
+    
+    # --- Cambio 5: Evolución indicadores de salud vs. gasto ---
+    dep_temporal = df_salud_temporal[df_salud_temporal["departamento"] == departamento_sel]
+    
+    if len(dep_temporal) > 0:
+        st.markdown("**📊 Evolución: inversión en salud vs. indicadores del territorio (2023–2025)**")
+        st.caption(
+            "¿Se traduce el gasto en contratación de salud en mejores indicadores? "
+            "Esta comparación no implica causalidad directa — factores externos como "
+            "migración, emergencias sanitarias o tiempos de maduración de proyectos "
+            "también influyen en los resultados."
+        )
+        
+        indicador_temporal = st.selectbox(
+            "Indicador de salud a comparar:",
+            options=["cobertura_vacunacion", "mortalidad_infantil_x1000",
+                     "camas_x10000_hab", "medicos_x10000_hab"],
+            format_func=lambda x: {
+                "cobertura_vacunacion": "Cobertura de vacunación (%)",
+                "mortalidad_infantil_x1000": "Mortalidad infantil (‰)",
+                "camas_x10000_hab": "Camas hospitalarias / 10.000 hab",
+                "medicos_x10000_hab": "Médicos / 10.000 hab",
+            }[x],
+            key="indicador_temporal_m1",
+        )
+        
+        # Gráfico de doble eje
+        fig_evol = go.Figure()
+        
+        # Barras: gasto en salud
+        fig_evol.add_trace(go.Bar(
+            x=dep_temporal["anio"],
+            y=dep_temporal["gasto_salud"],
+            name="Gasto en contratación",
+            marker_color="#B0BEC5",
+            opacity=0.7,
+            yaxis="y",
+        ))
+        
+        # Línea: indicador de salud
+        nombre_indicador = {
+            "cobertura_vacunacion": "Cobertura vacunación (%)",
+            "mortalidad_infantil_x1000": "Mortalidad infantil (‰)",
+            "camas_x10000_hab": "Camas / 10.000 hab",
+            "medicos_x10000_hab": "Médicos / 10.000 hab",
+        }[indicador_temporal]
+        
+        fig_evol.add_trace(go.Scatter(
+            x=dep_temporal["anio"],
+            y=dep_temporal[indicador_temporal],
+            name=nombre_indicador,
+            mode="lines+markers",
+            line=dict(color="#2E75B6", width=3),
+            marker=dict(size=10),
+            yaxis="y2",
+        ))
+        
+        fig_evol.update_layout(
+            yaxis=dict(title="Gasto en contratación (COP)", side="left", showgrid=False),
+            yaxis2=dict(title=nombre_indicador, side="right", overlaying="y", showgrid=True),
+            xaxis=dict(title="", tickvals=[2023, 2024, 2025], dtick=1),
+            height=350,
+            margin=dict(l=10, r=10, t=30, b=10),
+            plot_bgcolor="white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+            barmode="group",
+        )
+        st.plotly_chart(fig_evol, use_container_width=True)
+        
+        # Narrativa automática
+        if len(dep_temporal) >= 3:
+            gasto_23 = dep_temporal[dep_temporal["anio"] == 2023]["gasto_salud"].values[0]
+            gasto_25 = dep_temporal[dep_temporal["anio"] == 2025]["gasto_salud"].values[0]
+            ind_23 = dep_temporal[dep_temporal["anio"] == 2023][indicador_temporal].values[0]
+            ind_25 = dep_temporal[dep_temporal["anio"] == 2025][indicador_temporal].values[0]
+            
+            if gasto_23 > 0:
+                cambio_gasto = (gasto_25 - gasto_23) / gasto_23 * 100
+                cambio_ind = ind_25 - ind_23
+                
+                # Interpretar según indicador (mortalidad: menor = mejor)
+                mejor_si_sube = indicador_temporal != "mortalidad_infantil_x1000"
+                indicador_mejoro = (cambio_ind > 0) if mejor_si_sube else (cambio_ind < 0)
+                
+                if cambio_gasto > 10 and not indicador_mejoro:
+                    st.warning(
+                        f"⚠️ Entre 2023 y 2025, el gasto en contratación de salud "
+                        f"{'aumentó' if cambio_gasto > 0 else 'disminuyó'} un **{abs(cambio_gasto):.0f}%**, "
+                        f"pero el indicador {nombre_indicador.lower()} "
+                        f"{'empeoró' if not indicador_mejoro else 'mejoró'} "
+                        f"({ind_23} → {ind_25}). Esto no confirma irregularidades — "
+                        f"puede deberse a inversiones de largo plazo, factores externos o "
+                        f"presiones demográficas."
+                    )
+                elif cambio_gasto > 10 and indicador_mejoro:
+                    st.success(
+                        f"✅ Entre 2023 y 2025, el gasto en contratación de salud "
+                        f"aumentó un **{abs(cambio_gasto):.0f}%** y el indicador "
+                        f"{nombre_indicador.lower()} mejoró ({ind_23} → {ind_25})."
+                    )
     
     # Ranking nacional
     dep_rank = df.groupby("departamento").apply(
